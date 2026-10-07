@@ -29,6 +29,13 @@
       "when": 1791218867248,
       "tag": "0003_tired_wong",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791388936886,
+      "tag": "0004_analysis_instructions_and_chat",
+      "breakpoints": true
     }
   ]
 }

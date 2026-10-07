@@ -28,6 +28,7 @@ const NAV = [
   {
     group: 'Setup', items: [
       { href: '/app/competitors', label: 'Channels', icon: Icon.competitors },
+      { href: '/app/instructions', label: 'Instructions', icon: Icon.instructions },
       { href: '/app/usage', label: 'Usage', icon: Icon.usage },
       { href: '/app/settings', label: 'Settings', icon: Icon.settings },
     ]

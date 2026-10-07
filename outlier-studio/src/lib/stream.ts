@@ -1,20 +1,21 @@
 import { ApiError, toApiError } from './api';
-import type { Generation, TokenUsage } from './types';
+import type { ChatMessage, Generation, TokenUsage } from './types';
 
 type Handlers = {
   onDelta: (text: string) => void;
 };
 export type ScriptDone = { generation: Generation; usage: TokenUsage | null; truncated: boolean };
+export type ChatDone = { messages: ChatMessage[]; usage: TokenUsage | null; truncated: boolean };
 
 /**
- * Calls POST /api/ai/script and feeds each streamed piece of text to onDelta.
- * Resolves with the saved script; rejects with an ApiError on any failure,
- * whether it arrives as an HTTP error or as an "error" event mid-stream.
+ * POSTs to a streaming endpoint and feeds each streamed piece of text to
+ * onDelta. Resolves with the "done" event's data; rejects with an ApiError on
+ * any failure, whether it arrives as an HTTP error or as an "error" event mid-stream.
  */
-export async function streamScript(body: unknown, handlers: Handlers, signal: AbortSignal): Promise<ScriptDone> {
+async function streamEvents<T>(path: string, body: unknown, handlers: Handlers, signal: AbortSignal, interrupted: string): Promise<T> {
   let res: Response;
   try {
-    res = await fetch('/api/ai/script', {
+    res = await fetch(path, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
@@ -30,7 +31,7 @@ export async function streamScript(body: unknown, handlers: Handlers, signal: Ab
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
-  let done: ScriptDone | undefined;
+  let done: T | undefined;
 
   for (;;) {
     const chunk = await reader.read();
@@ -49,6 +50,16 @@ export async function streamScript(body: unknown, handlers: Handlers, signal: Ab
       else if (event === 'error') throw new ApiError(502, data.code, data.message);
     }
   }
-  if (!done) throw new ApiError(502, 'ai_stream_interrupted', 'The script stopped before it finished. Please try again.');
+  if (!done) throw new ApiError(502, 'ai_stream_interrupted', interrupted);
   return done;
+}
+
+/** Calls POST /api/ai/script. Resolves with the saved script. */
+export function streamScript(body: unknown, handlers: Handlers, signal: AbortSignal): Promise<ScriptDone> {
+  return streamEvents<ScriptDone>('/api/ai/script', body, handlers, signal, 'The script stopped before it finished. Please try again.');
+}
+
+/** Asks a follow-up question about a saved analysis. Resolves with the saved question and answer. */
+export function streamChat(analysisId: string, message: string, handlers: Handlers, signal: AbortSignal): Promise<ChatDone> {
+  return streamEvents<ChatDone>(`/api/analyses/${analysisId}/chat`, { message }, handlers, signal, 'The answer stopped before it finished. Please try again.');
 }

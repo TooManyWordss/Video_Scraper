@@ -155,6 +155,38 @@ export const generations = pgTable(
   (t) => [index('generations_user_created_idx').on(t.userId, t.createdAt), index('generations_video_idx').on(t.videoId)],
 );
 
+/**
+ * A user's own guidance for video analysis, written by hand or imported from a
+ * file. The one marked default is applied to every new analysis.
+ */
+export const analysisInstructions = pgTable(
+  'analysis_instructions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    content: text('content').notNull(),
+    isDefault: boolean('is_default').notNull().default(false),
+    createdAt: ts('created_at').notNull().defaultNow(),
+    updatedAt: ts('updated_at').notNull().defaultNow(),
+  },
+  (t) => [index('analysis_instructions_user_idx').on(t.userId)],
+);
+
+/** Follow-up chat about one saved analysis. */
+export const analysisMessages = pgTable(
+  'analysis_messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    generationId: uuid('generation_id').notNull().references(() => generations.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    role: text('role', { enum: ['user', 'assistant'] }).notNull(),
+    content: text('content').notNull(),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('analysis_messages_generation_created_idx').on(t.generationId, t.createdAt)],
+);
+
 /** One row per Groq request, written by the usage recorder. */
 export const aiRequests = pgTable(
   'ai_requests',
@@ -232,3 +264,5 @@ export type Generation = typeof generations.$inferSelect;
 export type AiRequest = typeof aiRequests.$inferSelect;
 export type Channel = typeof channels.$inferSelect;
 export type Video = typeof videos.$inferSelect;
+export type AnalysisInstructions = typeof analysisInstructions.$inferSelect;
+export type AnalysisMessage = typeof analysisMessages.$inferSelect;

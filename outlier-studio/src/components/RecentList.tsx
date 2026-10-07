@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { api, type ApiError } from '@/lib/api';
 import { day, KIND_LABEL } from '@/lib/format';
 import type { GenerationSummary } from '@/lib/types';
+import { PlatformBadge } from './PlatformBadge';
 import { ErrorNotice, Skeleton } from './ui';
 
 export function GenerationRows({ items }: { items: GenerationSummary[] }) {
@@ -14,6 +15,7 @@ export function GenerationRows({ items }: { items: GenerationSummary[] }) {
         <Link key={g.id} href={`/app/library/${g.id}`}>
           <span className="title">{g.title}</span>
           <span className="row small muted">
+            {g.platform && <PlatformBadge platform={g.platform} />}
             <span className="tag">{KIND_LABEL[g.kind]}</span>
             {day(g.createdAt)}
           </span>

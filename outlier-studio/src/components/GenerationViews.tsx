@@ -2,12 +2,16 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useId, useRef, useState, type KeyboardEvent } from 'react';
 import { compact } from '@/lib/format';
-import type { Analysis, Hook, Report } from '@/lib/types';
+import type { Analysis, Hook, LongBreakdown, Report, Technique } from '@/lib/types';
 import { HOOK_PATTERN_LABELS } from '@/shared/catalog';
+import { AnalysisChat } from './AnalysisChat';
 import { CopyButton } from './ui';
 import { BreakdownTabs } from './BreakdownTabs';
 import { HookCallout } from './HookCallout';
+import { Icon } from './icons';
+import { LongBreakdownView } from './LongBreakdownView';
 
 const scriptLink = (params: Record<string, string>) => `/app/scripts?${new URLSearchParams(params)}`;
 
@@ -36,7 +40,144 @@ export function HooksList({ hooks, topic }: { hooks: Hook[]; topic: string }) {
 /** sessionStorage key used to carry a long transcript from Analyze to Scripts. */
 export const REMIX_KEY = 'remix-transcript';
 
-export function AnalysisView({ analysis, transcript, title, hideMultiple }: { analysis: Analysis; transcript?: string; title?: string; hideMultiple?: boolean }) {
+const VIEWS = [
+  { key: 'short', label: 'Short breakdown', hint: 'Tactics, tricks and techniques' },
+  { key: 'long', label: 'Long breakdown', hint: 'The full script, line by line' },
+  { key: 'chat', label: 'Chat', hint: 'Ask follow-up questions' },
+] as const;
+type ViewKey = (typeof VIEWS)[number]['key'];
+
+/**
+ * A saved analysis in three views: the short breakdown, the long
+ * sentence-by-sentence breakdown, and a chat about it. Long and Chat need the
+ * saved analysis id; without one only the short breakdown is shown.
+ */
+export function AnalysisView(props: { analysis: Analysis; transcript?: string; title?: string; hideMultiple?: boolean; generationId?: string }) {
+  const { analysis, generationId } = props;
+  const views = generationId ? VIEWS : VIEWS.slice(0, 1);
+  const [view, setView] = useState<ViewKey>('short');
+  /** Chat stays mounted once opened, so a half-typed question survives switching views. */
+  const [opened, setOpened] = useState<Set<ViewKey>>(() => new Set(['short']));
+  const [longBreakdown, setLongBreakdown] = useState<LongBreakdown | undefined>(analysis.longBreakdown);
+  const buttons = useRef<(HTMLButtonElement | null)[]>([]);
+  const id = useId();
+
+  function select(next: ViewKey) {
+    setView(next);
+    setOpened((s) => new Set(s).add(next));
+  }
+  function onKeyDown(event: KeyboardEvent) {
+    const at = views.findIndex((v) => v.key === view);
+    let next = at;
+    if (event.key === 'ArrowRight') next = (at + 1) % views.length;
+    else if (event.key === 'ArrowLeft') next = (at - 1 + views.length) % views.length;
+    else if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = views.length - 1;
+    else return;
+    event.preventDefault();
+    select(views[next]!.key);
+    buttons.current[next]?.focus();
+  }
+
+  return (
+    <div className="stack">
+      {views.length > 1 && (
+        <div className="view-switch" role="tablist" aria-label="Breakdown views" onKeyDown={onKeyDown}>
+          {views.map((v, i) => (
+            <button
+              key={v.key}
+              type="button"
+              role="tab"
+              id={`${id}-tab-${v.key}`}
+              aria-controls={`${id}-panel-${v.key}`}
+              aria-selected={view === v.key}
+              tabIndex={view === v.key ? 0 : -1}
+              ref={(el) => {
+                buttons.current[i] = el;
+              }}
+              onClick={() => select(v.key)}
+            >
+              <strong>{v.label}</strong>
+              <span>{v.hint}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {analysis.instructionsName && (
+        <p className="muted small instructions-applied">
+          <Icon.instructions /> Following your instructions: <strong>{analysis.instructionsName}</strong>
+        </p>
+      )}
+      <div role={views.length > 1 ? 'tabpanel' : undefined} id={`${id}-panel-short`} aria-labelledby={`${id}-tab-short`} hidden={view !== 'short'}>
+        <ShortBreakdown {...props} />
+      </div>
+      {generationId && opened.has('long') && (
+        <div role="tabpanel" id={`${id}-panel-long`} aria-labelledby={`${id}-tab-long`} hidden={view !== 'long'}>
+          <LongBreakdownView analysisId={generationId} breakdown={longBreakdown} onBuilt={setLongBreakdown} />
+        </div>
+      )}
+      {generationId && opened.has('chat') && (
+        <div role="tabpanel" id={`${id}-panel-chat`} aria-labelledby={`${id}-tab-chat`} hidden={view !== 'chat'}>
+          <AnalysisChat analysisId={generationId} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+const KIND_LABEL: Record<Technique['kind'], string> = { tactic: 'Tactics', trick: 'Tricks', technique: 'Techniques' };
+const KIND_HINT: Record<Technique['kind'], string> = {
+  tactic: 'The strategic choices: what the video sets out to do to the viewer.',
+  trick: 'Small attention devices that keep people watching.',
+  technique: 'Craft in the wording itself.',
+};
+
+/** The tactics, tricks and techniques, grouped by kind. Older analyses only have a plain list of tactics. */
+function TechniquesSection({ analysis }: { analysis: Analysis }) {
+  const techniques = analysis.techniques ?? [];
+  if (techniques.length === 0) {
+    if (!analysis.storytellingTactics?.length) return null;
+    return (
+      <section>
+        <h2>Storytelling tactics</h2>
+        <ul className="bullets">
+          {analysis.storytellingTactics.map((t, i) => (
+            <li key={i}>{t}</li>
+          ))}
+        </ul>
+      </section>
+    );
+  }
+  return (
+    <section>
+      <h2>Tactics, tricks and techniques</h2>
+      <div className="technique-groups">
+        {(['tactic', 'trick', 'technique'] as const).map((kind) => {
+          const group = techniques.filter((t) => t.kind === kind);
+          if (group.length === 0) return null;
+          return (
+            <div key={kind} className="technique-group">
+              <h3>
+                {KIND_LABEL[kind]} <span className="muted small">{KIND_HINT[kind]}</span>
+              </h3>
+              <ul>
+                {group.map((t, i) => (
+                  <li key={i} className="technique">
+                    <strong>{t.name}</strong>
+                    {t.quote && <q>{t.quote}</q>}
+                    <p className="muted small">{t.effect}</p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function ShortBreakdown({ analysis, transcript, title, hideMultiple }: { analysis: Analysis; transcript?: string; title?: string; hideMultiple?: boolean }) {
   const router = useRouter();
 
   /** Carries the transcript to another tool; returns the query flag to add when it worked. */
@@ -90,6 +231,24 @@ export function AnalysisView({ analysis, transcript, title, hideMultiple }: { an
 
       <HookCallout hook={analysis.hook} />
 
+      <TechniquesSection analysis={analysis} />
+
+      {analysis.customFocus && analysis.customFocus.length > 0 && (
+        <section>
+          <h2>What your instructions asked for</h2>
+          <ol className="beats">
+            {analysis.customFocus.map((f, i) => (
+              <li key={i}>
+                <div>
+                  <strong>{f.point}</strong>
+                  <p>{f.detail}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+
       {analysis.structure.length > 0 && (
         <section>
           <h2>How it is built</h2>
@@ -104,17 +263,6 @@ export function AnalysisView({ analysis, transcript, title, hideMultiple }: { an
               </li>
             ))}
           </ol>
-        </section>
-      )}
-
-      {analysis.storytellingTactics.length > 0 && (
-        <section>
-          <h2>Storytelling tactics</h2>
-          <ul className="bullets">
-            {analysis.storytellingTactics.map((t, i) => (
-              <li key={i}>{t}</li>
-            ))}
-          </ul>
         </section>
       )}
 

@@ -8,11 +8,10 @@ import { Picture } from '@/components/Picture';
 import { ErrorNotice, Skeleton } from '@/components/ui';
 import { PageHead } from '@/components/ui';
 import { SelectMenu } from '@/components/SelectMenu';
-import { PlatformLogo } from '@/components/PlatformLogo';
+import { PlatformBadge } from '@/components/PlatformBadge';
 import { api, type ApiError } from '@/lib/api';
 import { ago, compact } from '@/lib/format';
 import type { ChannelList, FeedVideo } from '@/lib/types';
-import { PLATFORM_NAME } from '@/shared/video-url';
 
 type Page = { items: FeedVideo[]; nextOffset: number | null };
 
@@ -94,9 +93,7 @@ function VideoCard({ video }: { video: FeedVideo }) {
     <Link className="vcard" href={`/app/videos/${video.id}`} data-short={portrait}>
       <span className="vcard-media">
         <Picture className="vthumb" src={video.thumbnailUrl} />
-        <span className="vcard-badge" data-p={video.platform} title={PLATFORM_NAME[video.platform]}>
-          <PlatformLogo platform={video.platform} />
-        </span>
+        <PlatformBadge platform={video.platform} iconOnly className="vcard-badge" />
         {video.analyzed && <span className="vcard-done">Analyzed</span>}
         {video.outlierMultiple !== null && <span className="vcard-outlier"><TrendIcon />{video.outlierMultiple}x</span>}
         <span className="vcard-quick">Break down <span aria-hidden="true">→</span></span>

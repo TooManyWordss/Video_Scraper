@@ -9,7 +9,7 @@ import { Icon } from './icons';
 const PAGES = [
   ['Videos', '/app/feed', 'Research'], ['Discover', '/app/discover', 'Research'], ['Hook library', '/app/hook-library', 'Research'],
   ['Scripts', '/app/scripts', 'Create'], ['Hook writer', '/app/hooks', 'Create'], ['Analyze a link', '/app/analyze', 'Create'],
-  ['Library', '/app/library', 'Create'], ['Watchlist', '/app/competitors', 'Setup'], ['Usage', '/app/usage', 'Setup'], ['Settings', '/app/settings', 'Setup'],
+  ['Library', '/app/library', 'Create'], ['Watchlist', '/app/competitors', 'Setup'], ['Analysis instructions', '/app/instructions', 'Setup'], ['Usage', '/app/usage', 'Setup'], ['Settings', '/app/settings', 'Setup'],
 ] as const;
 
 type Item = { label: string; href: string; meta: string };

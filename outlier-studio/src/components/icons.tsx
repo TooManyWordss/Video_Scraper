@@ -61,6 +61,27 @@ export const Icon = {
       <path d="M4 16V9M10 16V4M16 16v-5" />
     </svg>
   ),
+  instructions: () => (
+    <svg {...base}>
+      <path d="M5 2.5h7l3.5 3.5v11.5H5z" />
+      <path d="M12 2.5V6h3.5M7.5 10h5M7.5 13h5" />
+    </svg>
+  ),
+  chat: () => (
+    <svg {...base}>
+      <path d="M3.5 4.5h13v9h-7l-4 3v-3h-2z" />
+    </svg>
+  ),
+  send: () => (
+    <svg {...base}>
+      <path d="M3 10h11M10 5l5 5-5 5" />
+    </svg>
+  ),
+  upload: () => (
+    <svg {...base}>
+      <path d="M10 13V3.5M6 7.5l4-4 4 4M3.5 13v3.5h13V13" />
+    </svg>
+  ),
   settings: () => (
     <svg {...base}>
       <circle cx="10" cy="7" r="3.2" />

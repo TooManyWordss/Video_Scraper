@@ -169,10 +169,10 @@ describe('adding a single video by link', () => {
     expect(list.items[0]).toMatchObject({ platform: 'tiktok', monitored: false, title: 'Chef Maya' });
     expect(list.transcriptsConfigured).toBe(true);
 
-    // No configured Actor reads TikTok audio, so the analysis needs a pasted transcript.
+    // When the video's audio cannot be fetched, the analysis falls back to a pasted transcript.
     const noTranscript = await oneClick(cookie, videoId);
     expect(noTranscript.status).toBe(422);
-    expect((await noTranscript.json()).error.code).toBe('transcript_unavailable');
+    expect((await noTranscript.json()).error.code).toBe('audio_unavailable');
     expect(groq.calls).toHaveLength(0);
 
     groq.enqueue({ kind: 'json', content: ANALYSIS });

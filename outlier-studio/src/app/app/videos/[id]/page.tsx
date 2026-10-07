@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { AnalysisView } from '@/components/GenerationViews';
+import { InstructionsPicker } from '@/components/InstructionsPicker';
 import { VideoHeader } from '@/components/VideoHeader';
 import { MetricsRow } from '@/components/MetricsRow';
 import { ErrorNotice, Field, Skeleton, useReveal } from '@/components/ui';
@@ -16,7 +17,7 @@ import { PLATFORM_NAME } from '@/shared/video-url';
 type AnalysisGeneration = Extract<Generation, { kind: 'analysis' }>;
 
 /** Failures of the automatic transcript, where pasting one in is the way forward. */
-const PASTE_INSTEAD = new Set(['transcripts_not_configured', 'transcript_unavailable', 'transcript_quota', 'transcript_plan_limit', 'transcript_timeout', 'transcripts_unavailable', 'video_not_accessible']);
+const PASTE_INSTEAD = new Set(['audio_unavailable', 'audio_too_large', 'transcripts_not_configured', 'transcript_unavailable', 'transcript_quota', 'transcript_plan_limit', 'transcript_timeout', 'transcripts_unavailable', 'video_not_accessible']);
 
 function VideoScreen() {
   const { id } = useParams<{ id: string }>();
@@ -32,6 +33,8 @@ function VideoScreen() {
   const [updateError, setUpdateError] = useState<ApiError | null>(null);
   const [resultRef, reveal] = useReveal<HTMLElement>();
   const started = useRef(false);
+  /** The instructions the next analysis follows; undefined until chosen, so the server applies the default. */
+  const instructionsId = useRef<string | null | undefined>(undefined);
 
   const load = useCallback(
     () =>
@@ -49,7 +52,8 @@ function VideoScreen() {
       setError(null);
       reveal();
       try {
-        const { generation } = await api<{ generation: AnalysisGeneration }>('/api/ai/analyze', { body: { videoId: id, ...(transcript ? { transcript } : {}) } });
+        const choice = instructionsId.current === undefined ? {} : { instructionsId: instructionsId.current };
+        const { generation } = await api<{ generation: AnalysisGeneration }>('/api/ai/analyze', { body: { videoId: id, ...choice, ...(transcript ? { transcript } : {}) } });
         setAnalysis(generation);
         setPasteOpen(false);
         void load().catch(() => undefined);
@@ -144,18 +148,19 @@ function VideoScreen() {
           </div>
         ) : analysis ? (
           <>
-            <div className="breakdown-stepper" aria-label="Breakdown sections"><span><b>1</b>Hook</span><span><b>2</b>Structure</span><span><b>3</b>Ideas</span></div>
-            <AnalysisView analysis={analysis.output} transcript={analysis.input.transcript} title={video.title} hideMultiple />
+            <AnalysisView key={analysis.id} generationId={analysis.id} analysis={analysis.output} transcript={analysis.input.transcript} title={video.title} hideMultiple />
             <div className="row">
               <button type="button" className="btn btn-sm" onClick={() => analyze()}>
                 Break it down again
               </button>
+              <InstructionsPicker onChange={(next) => (instructionsId.current = next)} />
               <span className="muted small">{video.hasTranscript ? 'The transcript is already saved, so no new one is fetched.' : ''}</span>
             </div>
           </>
         ) : (
           <div className="panel stack">
-            <p>Get this video&apos;s hook, its structure beat by beat, and ideas for your own version.</p>
+            <p>Get this video&apos;s hook, the tactics, tricks and techniques it uses, its structure beat by beat, and ideas for your own version.</p>
+            <InstructionsPicker onChange={(next) => (instructionsId.current = next)} />
             {!data.transcriptsConfigured && !video.hasTranscript && (
               <p className="notice">
                 Automatic transcripts are not set up on this server (it needs an <code>APIFY_TOKEN</code>). You can still paste a transcript below.

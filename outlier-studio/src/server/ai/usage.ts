@@ -46,13 +46,15 @@ function usageColumns(model: string, usage: TokenUsage | null) {
   };
 }
 
-type Outcome = { model: string; usage: TokenUsage | null; latencyMs: number; groqRequestId?: string | null };
+/** costUsd is given for requests not priced by tokens, such as transcriptions priced by audio length. */
+type Outcome = { model: string; usage: TokenUsage | null; latencyMs: number; groqRequestId?: string | null; costUsd?: number | null };
 
 export async function completeRequest(id: string, o: Outcome): Promise<void> {
   const db = await getDb();
+  const cost = o.costUsd === undefined ? {} : { estimatedCostUsd: o.costUsd === null ? null : o.costUsd.toFixed(8) };
   await db
     .update(aiRequests)
-    .set({ status: 'succeeded', latencyMs: o.latencyMs, groqRequestId: o.groqRequestId ?? null, completedAt: new Date(), ...usageColumns(o.model, o.usage) })
+    .set({ status: 'succeeded', latencyMs: o.latencyMs, groqRequestId: o.groqRequestId ?? null, completedAt: new Date(), ...usageColumns(o.model, o.usage), ...cost })
     .where(eq(aiRequests.id, id));
 }
 

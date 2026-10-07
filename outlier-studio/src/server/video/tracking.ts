@@ -9,7 +9,8 @@ import { env } from '../env';
 import { AppError, notFound } from '../errors';
 import { getLimits } from '../settings';
 import { baselineViews, outlierMultiple, viewsPerHour } from './metrics';
-import { fetchTranscript, fetchVideoMetadata } from './apify';
+import { transcribeMedia } from '../ai/transcribe';
+import { fetchMediaSource, fetchTranscript, fetchVideoMetadata } from './apify';
 import { fetchVideos, type ChannelInfo, type VideoInfo } from './youtube';
 import { fetchSnapshot, lookupChannel, MONITORED_PLATFORMS, platformConfigured, type MonitoredPlatform } from './platforms';
 
@@ -408,11 +409,19 @@ export async function refreshVideoNow(userId: string, videoId: string): Promise<
  * first time and stored on the video, so analysing it again (by anyone who
  * tracks it) costs no further request.
  */
-export async function ensureTranscript(video: { id: string; externalId: string; isShort: boolean; platform: string; sourceUrl: string | null; durationSeconds: number | null; transcript: string | null }): Promise<string> {
+/**
+ * The video's spoken words, fetched once and then reused by everyone who tracks
+ * it. YouTube uses its captions; TikTok and Instagram are transcribed from their
+ * audio, which is recorded as the requesting user's AI usage.
+ */
+export async function ensureTranscript(
+  video: { id: string; externalId: string; isShort: boolean; platform: string; sourceUrl: string | null; durationSeconds: number | null; transcript: string | null; title?: string },
+  userId: string,
+): Promise<string> {
   if (video.transcript) return video.transcript;
   const url = video.sourceUrl ?? (video.platform === 'youtube' ? youtubeVideoUrl(video.externalId, video.isShort) : null);
   if (!url) throw notFound();
-  const fetched = await fetchTranscript(url);
+  const fetched = video.platform === 'youtube' ? await fetchTranscript(url) : await transcribeMedia(userId, await fetchMediaSource(url), video.title);
   const db = await getDb();
   await db.update(videos).set({ transcript: fetched.text.slice(0, 60_000), transcriptLang: fetched.lang }).where(eq(videos.id, video.id));
   return fetched.text;

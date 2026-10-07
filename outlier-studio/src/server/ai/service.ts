@@ -6,12 +6,13 @@ import type { Feature } from '../settings';
 import { getGroq } from './client';
 import { mapGroqError } from './errors';
 import { reserve } from './limits';
-import { modelFor, supportsStrictJson, type ModelTier } from './models';
+import { modelFor, supportsStrictJson, transcriptionModel, type ModelTier } from './models';
+import { estimateAudioCostUsd } from './pricing';
 import { completeRequest, failRequest, readUsage, type TokenUsage } from './usage';
 
 /**
- * The single entry point for AI generation. Every feature calls generateJson
- * or openTextStream; nothing else in the codebase talks to an AI provider.
+ * The single entry point for AI generation. Every feature calls generateJson,
+ * openTextStream or transcribeAudio; nothing else in the codebase talks to an AI provider.
  * Each call is: check limits and reserve credits -> call Groq -> record usage.
  */
 
@@ -21,6 +22,8 @@ type BaseCall = {
   tier: ModelTier;
   system: string;
   prompt: string;
+  /** Earlier turns of a conversation, placed between the system message and the prompt. */
+  history?: { role: 'user' | 'assistant'; content: string }[];
   maxOutputTokens?: number;
   temperature?: number;
   signal?: AbortSignal;
@@ -32,6 +35,7 @@ function baseParams(call: BaseCall, model: string) {
     model,
     messages: [
       { role: 'system' as const, content: call.system },
+      ...(call.history ?? []),
       { role: 'user' as const, content: call.prompt },
     ],
     temperature: call.temperature ?? 0.7,
@@ -63,6 +67,23 @@ async function recordFailure(requestId: string, err: unknown, outcome: Outcome, 
   return toThrow;
 }
 
+/**
+ * Removes "default" keywords, which strict structured output does not accept.
+ * The zod schema still applies the defaults when the response is parsed.
+ */
+function stripDefaults(node: unknown, isPropertyMap = false): unknown {
+  if (Array.isArray(node)) return node.map((n) => stripDefaults(n));
+  if (!node || typeof node !== 'object') return node;
+  return Object.fromEntries(
+    Object.entries(node)
+      .filter(([k]) => isPropertyMap || k !== 'default')
+      .map(([k, v]) => [k, stripDefaults(v, !isPropertyMap && k === 'properties')]),
+  );
+}
+
+/** Features whose large JSON responses get one retry in JSON-object mode. */
+const RETRY_FEATURES = new Set<Feature>(['analysis', 'breakdown']);
+
 const invalidOutput = () => new AppError(502, 'ai_invalid_output', 'The AI returned an unusable response. Please try again.');
 
 export type JsonResult<T> = { requestId: string; model: string; data: T; usage: TokenUsage | null };
@@ -76,12 +97,13 @@ export async function generateJson<T>(call: BaseCall & { schemaName: string; sch
   let groqRequestId: string | null = null;
 
   try {
-    const { $schema: _drop, ...jsonSchema } = z.toJSONSchema(call.schema) as Record<string, unknown>;
+    const { $schema: _drop, ...jsonSchema } = stripDefaults(z.toJSONSchema(call.schema)) as Record<string, unknown>;
     const strict = supportsStrictJson(model);
     let data: T | undefined;
     // Analysis responses are larger and can exhaust the model's output budget.
     // Retry once in JSON-object mode when strict output is rejected or malformed.
-    for (let attempt = 0; attempt < (call.feature === 'analysis' ? 2 : 1); attempt++) {
+    const attempts = RETRY_FEATURES.has(call.feature) ? 2 : 1;
+    for (let attempt = 0; attempt < attempts; attempt++) {
       const useStrict = strict && attempt === 0;
       const params = baseParams(call, model);
       if (!useStrict) {
@@ -114,7 +136,7 @@ export async function generateJson<T>(call: BaseCall & { schemaName: string; sch
         if (err instanceof SyntaxError) err = invalidOutput();
         let mapped: AppError | null = null;
         try { mapped = mapGroqError(err); } catch { /* Keep unexpected failures for the route logger. */ }
-        if (attempt === 0 && call.feature === 'analysis' && mapped?.code === 'ai_invalid_output') continue;
+        if (attempt < attempts - 1 && mapped?.code === 'ai_invalid_output') continue;
         throw err;
       }
     }
@@ -208,4 +230,41 @@ export async function openTextStream(call: BaseCall): Promise<TextStream> {
   }
 
   return { requestId, model, deltas: deltas() };
+}
+
+/** What Groq's speech-to-text returns in verbose_json form, as far as the app reads it. */
+export type AudioTranscription = {
+  text?: string;
+  language?: string;
+  duration?: number;
+  segments?: { text?: string; no_speech_prob?: number; avg_logprob?: number }[];
+};
+
+/**
+ * Transcribes an audio or video file. Recorded like any other request, but
+ * priced by audio length since speech-to-text reports no tokens.
+ */
+export async function transcribeAudio(call: { userId: string; file: File; prompt?: string; signal?: AbortSignal }): Promise<{ requestId: string; model: string; data: AudioTranscription }> {
+  const groq = getGroq();
+  const model = transcriptionModel();
+  const requestId = await reserve(call.userId, 'transcribe', model);
+  const started = Date.now();
+  try {
+    const data = (await groq.audio.transcriptions.create(
+      {
+        file: call.file,
+        model,
+        response_format: 'verbose_json',
+        // Temperature 0 gives the most literal transcript.
+        temperature: 0,
+        ...(call.prompt ? { prompt: call.prompt } : {}),
+      },
+      { signal: call.signal },
+    )) as AudioTranscription;
+    const seconds = typeof data.duration === 'number' ? data.duration : 0;
+    await completeRequest(requestId, { model, usage: null, latencyMs: Date.now() - started, costUsd: estimateAudioCostUsd(model, seconds) });
+    return { requestId, model, data };
+  } catch (err) {
+    throw await recordFailure(requestId, err, { model, usage: null, latencyMs: Date.now() - started }, { aborted: call.signal?.aborted });
+  }
 }

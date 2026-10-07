@@ -72,7 +72,7 @@ export default function LibraryItemPage() {
 
       {item.kind === 'hooks' && <HooksList hooks={item.output.hooks} topic={item.input.topic} />}
       {item.kind === 'script' && <ScriptStage text={item.output.text} status="Script" actions={<CopyButton text={item.output.text} label="Copy script" />} />}
-      {item.kind === 'analysis' && <AnalysisView analysis={item.output} transcript={item.input.transcript} title={item.title} />}
+      {item.kind === 'analysis' && <AnalysisView generationId={item.id} analysis={item.output} transcript={item.input.transcript} title={item.title} />}
       {item.kind === 'report' && <ReportView report={item.output} />}
 
       <ErrorNotice error={error} />

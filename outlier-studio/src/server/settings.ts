@@ -4,7 +4,7 @@ import type { Db, Tx } from './db/client';
 import { appSettings } from './db/schema';
 
 /** Every AI-powered feature. Adding one here gives it usage tracking. */
-export const FEATURES = ['hooks', 'script', 'analysis', 'report'] as const;
+export const FEATURES = ['hooks', 'script', 'analysis', 'report', 'breakdown', 'chat', 'transcribe'] as const;
 export type Feature = (typeof FEATURES)[number];
 
 export const LimitsSchema = z.object({

@@ -7,6 +7,7 @@ import { api, type ApiError } from '@/lib/api';
 import { compact } from '@/lib/format';
 import type { HookLibraryItem } from '@/lib/types';
 import { PLATFORM_NAME } from '@/shared/video-url';
+import { PlatformBadge } from '@/components/PlatformBadge';
 
 export default function HookLibraryPage() {
   const [items, setItems] = useState<HookLibraryItem[] | null>(null);
@@ -44,7 +45,7 @@ export default function HookLibraryPage() {
           <ol className="hook-masonry">
             {shown.map((item) => (
               <li key={item.generationId} className="hook-card panel">
-                <div className="hook-card-top"><span className="tag">{item.hook.pattern || 'Hook'}</span><button type="button" className="favorite-button" aria-label={`${favorites.has(item.generationId) ? 'Remove' : 'Add'} favorite`} aria-pressed={favorites.has(item.generationId)} onClick={() => setFavorites((current) => { const next = new Set(current); if (next.has(item.generationId)) next.delete(item.generationId); else next.add(item.generationId); return next; })}>♡</button></div>
+                <div className="hook-card-top"><span className="row">{item.video && <PlatformBadge platform={item.video.platform} iconOnly />}<span className="tag">{item.hook.pattern || 'Hook'}</span></span><button type="button" className="favorite-button" aria-label={`${favorites.has(item.generationId) ? 'Remove' : 'Add'} favorite`} aria-pressed={favorites.has(item.generationId)} onClick={() => setFavorites((current) => { const next = new Set(current); if (next.has(item.generationId)) next.delete(item.generationId); else next.add(item.generationId); return next; })}>♡</button></div>
                 <blockquote className="hook-card-quote">“{item.hook.text}”</blockquote>
                 <div className="hook-meta">
                   <span className="muted small">{item.hook.whyItWorks}</span>

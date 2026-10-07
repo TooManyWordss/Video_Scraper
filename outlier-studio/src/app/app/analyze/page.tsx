@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from 'react';
 import { AddVideoForm } from '@/components/AddVideoForm';
 import { AnalysisView } from '@/components/GenerationViews';
+import { InstructionsPicker } from '@/components/InstructionsPicker';
 import { PlatformSelect } from '@/components/PlatformSelect';
 import { ErrorNotice, Field, PageHead, useReveal, Skeleton } from '@/components/ui';
 import { api, compact, type ApiError } from '@/lib/api';
@@ -18,6 +19,7 @@ export default function AnalyzePage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
   const [result, setResult] = useState<AnalysisGeneration | null>(null);
+  const [instructionsId, setInstructionsId] = useState<string | null | undefined>(undefined);
   const [resultRef, reveal] = useReveal<HTMLElement>();
   const set = (key: keyof typeof form) => (value: string) => setForm((f) => ({ ...f, [key]: value }));
 
@@ -29,7 +31,7 @@ export default function AnalyzePage() {
     try {
       const { views, channelMedianViews, ...text } = form;
       const { generation } = await api<{ generation: AnalysisGeneration }>('/api/ai/analyze', {
-        body: compact({ ...text, views: wholeNumber(views), channelMedianViews: wholeNumber(channelMedianViews) }),
+        body: { ...compact({ ...text, views: wholeNumber(views), channelMedianViews: wholeNumber(channelMedianViews) }), ...(instructionsId === undefined ? {} : { instructionsId }) },
       });
       setResult(generation);
     } catch (err) {
@@ -70,6 +72,7 @@ export default function AnalyzePage() {
               </Field>
             </div>
           </details>
+          <InstructionsPicker onChange={setInstructionsId} />
           <ErrorNotice error={error} />
           <button className="btn btn-primary" disabled={busy || form.transcript.trim().length < 40}>
             {busy ? 'Analyzing video' : 'Analyze video'}
@@ -84,7 +87,7 @@ export default function AnalyzePage() {
           ) : result ? (
             <div className="stack">
               <p className="muted small">Saved to your Library.</p>
-              <AnalysisView analysis={result.output} transcript={result.input.transcript} title={result.title} />
+              <AnalysisView key={result.id} generationId={result.id} analysis={result.output} transcript={result.input.transcript} title={result.title} />
             </div>
           ) : (
             <div className="empty">

@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { Picture } from '@/components/Picture';
+import { PlatformBadge } from '@/components/PlatformBadge';
 import { ErrorNotice, PageHead, Skeleton } from '@/components/ui';
 import { api, type ApiError } from '@/lib/api';
 import { compact } from '@/lib/format';
@@ -154,7 +155,10 @@ export default function DiscoverPage() {
       <ErrorNotice error={error} />
 
       {direct && <div className="panel stack">
-        <strong>{direct.platform === 'youtube' ? 'YouTube' : direct.platform === 'instagram' ? 'Instagram' : 'TikTok'} {direct.kind === 'video' ? 'video' : 'account'}</strong>
+        <span className="channel-title-row">
+          <PlatformBadge platform={direct.platform} />
+          <strong>{direct.kind === 'video' ? 'Video' : 'Account'}</strong>
+        </span>
         <span className="muted small" style={{ overflowWrap: 'anywhere' }}>{direct.label}</span>
         <div><button type="button" className="btn btn-primary" disabled={busy !== null} onClick={addDirect}>{busy ? 'Adding' : direct.kind === 'video' ? 'Add video' : 'Add to watchlist'}</button></div>
       </div>}
@@ -171,7 +175,10 @@ export default function DiscoverPage() {
             <li key={`${c.platform}:${c.externalId}`} className="channel">
               <Picture className="avatar" src={c.thumbnailUrl} name={c.title} />
               <div className="channel-name">
-                <span>{c.title}</span>
+                <span className="channel-title-row">
+                  <span>{c.title}</span>
+                  <PlatformBadge platform={c.platform} />
+                </span>
                 <span className="muted small">
                   {c.handle ?? (c.platform === 'instagram' ? 'Instagram' : 'YouTube')} · {TIER_LABEL[c.tier]} · {c.videoCount ?? 0} {c.platform === 'instagram' ? 'posts' : 'videos'}
                 </span>

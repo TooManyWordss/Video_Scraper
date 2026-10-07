@@ -39,3 +39,19 @@ export function estimateCostUsd(model: string, inputTokens: number, outputTokens
   if (!price) return null;
   return (inputTokens * price.input + outputTokens * price.output) / 1_000_000;
 }
+
+/** USD per hour of audio, from https://console.groq.com/docs/speech-to-text on PRICING_AS_OF. */
+const AUDIO_PRICES: Record<string, number> = {
+  'whisper-large-v3': 0.111,
+  'whisper-large-v3-turbo': 0.04,
+};
+
+/** Groq bills every transcription as at least this many seconds. */
+const MIN_BILLED_SECONDS = 10;
+
+/** Estimated cost of transcribing `seconds` of audio, or null when the model has no known price. */
+export function estimateAudioCostUsd(model: string, seconds: number): number | null {
+  const perHour = AUDIO_PRICES[model];
+  if (perHour === undefined) return null;
+  return (Math.max(seconds, MIN_BILLED_SECONDS) / 3600) * perHour;
+}

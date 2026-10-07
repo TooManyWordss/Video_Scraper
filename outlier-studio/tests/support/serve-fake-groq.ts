@@ -52,7 +52,14 @@ const ANALYSIS = {
     { section: 'Proof', purpose: 'Earn belief before giving advice.', summary: 'Points to what the research says.' },
     { section: 'Replacement', purpose: 'Pay off the hook with something to do.', summary: 'A two-minute warm-up.' },
   ],
-  storytellingTactics: ['Opens a loop with "here is what the research actually says"', 'Keeps the fix small enough to try today'],
+  techniques: [
+    { name: 'Overturn a trusted habit', kind: 'tactic', quote: 'Most people stretch before they run', effect: 'The viewer feels personally implicated and stays to find out if they are doing it wrong.' },
+    { name: 'Borrowed authority', kind: 'tactic', quote: 'what the research actually says', effect: 'Makes the claim feel settled rather than one person’s opinion.' },
+    { name: 'Open loop', kind: 'trick', quote: 'Here is what the research actually says', effect: 'Promises an answer, so leaving now means missing it.' },
+    { name: 'Small, specific fix', kind: 'technique', quote: 'the two minute warm up', effect: 'A number makes the advice feel easy enough to try today.' },
+    { name: 'Rhythmic list', kind: 'technique', quote: 'First, leg swings. Then high knees.', effect: 'Short parallel lines are easy to follow and remember.' },
+  ],
+  customFocus: [{ point: 'Hook score: 8 out of 10', detail: 'It contradicts a habit most viewers have, but it could name the cost more sharply, for example "slower by 5%".' }],
   topics: ['running', 'warm-ups'],
   takeaways: ['Lead with the habit you are about to overturn', 'Give the replacement a number'],
   remixIdeas: [
@@ -76,10 +83,26 @@ const REPORT = {
   recommendations: ['Open with the habit you are about to overturn.', 'Replace numbered titles with the payoff.', 'Follow the 15x video with a part two within a week.'],
 };
 
+const CHAT = 'The hook works because it tells runners a habit they trust is costing them speed. That creates a small threat, and the only way to resolve it is to keep watching.';
+const ROLES = ['Hook', 'Promise', 'Step', 'Step', 'Step'];
+
+/** Line-by-line notes for whatever numbered lines the long breakdown asks about. */
+function lineNotes(prompt: string) {
+  const block = /<annotate>\n([\s\S]*?)\n<\/annotate>/.exec(prompt)?.[1] ?? '';
+  const numbers = [...block.matchAll(/^(\d+)\. /gm)].map((m) => Number(m[1]));
+  return { lines: numbers.map((n) => ({ n, role: ROLES[n - 1] ?? 'Step', technique: n === 1 ? 'Contrarian claim' : n === 2 ? 'Open loop' : '', explanation: 'Moves the viewer one step closer to the payoff.' })) };
+}
+
 const groq = new FakeGroq();
 groq.fallback = (body) => {
-  if (body.stream) return { kind: 'stream', pieces: SCRIPT.match(/[^ ]+ ?|\n+/g) ?? [SCRIPT], delayMs: 25 };
+  if (String(body.model ?? '').startsWith('whisper')) return { kind: 'transcription', text: TRANSCRIPT, duration: 34 };
+  const system = String(body.messages?.[0]?.content ?? '');
+  if (body.stream) {
+    const text = system.startsWith('You are the analyst') ? CHAT : SCRIPT;
+    return { kind: 'stream', pieces: text.match(/[^ ]+ ?|\n+/g) ?? [text], delayMs: 25 };
+  }
   const name = body.response_format?.json_schema?.name;
+  if (system.startsWith('You explain short-form video scripts')) return { kind: 'json', content: JSON.stringify(lineNotes(String(body.messages.at(-1)?.content ?? ''))) };
   return { kind: 'json', content: JSON.stringify(name === 'hooks' ? HOOKS : name === 'channel_report' ? REPORT : ANALYSIS) };
 };
 
@@ -116,5 +139,8 @@ apify.defaultTranscript = TRANSCRIPT;
 // One video without a transcript, to exercise the paste-it-in path.
 apify.transcripts.set('https://www.youtube.com/shorts/a0000000003', null);
 apify.posts.set(TIKTOK, { platform: 'tiktok', id: '7301234567890123456', username: 'chefmaya', displayName: 'Chef Maya', title: 'Stop rinsing your rice like this', views: 480000, likes: 31000, comments: 900, duration: 34 });
+// Sound for the TikTok and the reel, so both are transcribed from audio.
+apify.media.set('7301234567890123456', Buffer.alloc(4096));
+apify.media.set('CxYz123abcd', Buffer.alloc(4096));
 apify.posts.set(REEL, { platform: 'instagram', id: 'CxYz123abcd', username: 'trailnotes', displayName: 'Trail Notes', title: 'The downhill mistake that wrecks your knees', views: 212000, likes: 14000, comments: 310, duration: 41 });
 void apify.start(Number(process.env.FAKE_APIFY_PORT ?? 4012)).then((url) => console.log(`Stand-in Apify listening on ${url}\n  TikTok: ${TIKTOK}\n  Instagram: ${REEL}`));

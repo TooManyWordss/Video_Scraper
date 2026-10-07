@@ -77,16 +77,19 @@ describe('Instagram profile links', () => {
     const url = 'https://www.instagram.com/p/Dbh2LTOxiJm/';
     const post = { platform: 'instagram' as const, id: 'Dbh2LTOxiJm', username: 'trailnotes', displayName: 'Trail Notes', title: 'Video uploaded from Instagram', views: 1200, likes: 80, comments: 4, duration: 31 };
     apify.posts.set(url, post);
-    apify.transcripts.set(url, 'This is a complete spoken transcript from an Instagram video with enough words to analyze safely.');
+    apify.media.set(post.id, Buffer.from('fake reel audio'));
     const { cookie } = await newUser();
     const added = await call(addVideoRoute, 'POST', '/api/videos', { cookie, body: { url } });
     expect(added.status).toBe(201);
     expect(apify.calls.at(-1)?.input).toMatchObject({ username: [url], resultsLimit: 1 });
     expect(apify.calls.at(-1)?.cap).toBe('0.007300');
     const { videoId } = await added.json();
+    groq.enqueue({ kind: 'transcription', text: 'This is a complete spoken transcript from an Instagram video with enough words to analyze safely.' });
     groq.enqueue({ kind: 'json', content: JSON.stringify({ summary: 'Summary', hook: { text: 'This is a complete spoken transcript', pattern: 'Direct', whyItWorks: 'Clear' }, format: 'Explainer', structure: [], storytellingTactics: [], topics: [], takeaways: [], remixIdeas: [] }) });
     expect((await oneClick(cookie, videoId)).status).toBe(201);
-    expect(apify.calls.at(-1)?.input).toMatchObject({ username: [url], includeTranscript: true });
+    // The transcript comes from the reel's own audio, not the Actor's paid transcript add-on.
+    expect(apify.calls.at(-1)?.input).toEqual({ username: [url], resultsLimit: 1 });
+    expect(groq.calls[0]!.path).toBe('/openai/v1/audio/transcriptions');
   });
 
   it('says so when the account does not exist', async () => {

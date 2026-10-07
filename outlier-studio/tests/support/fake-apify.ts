@@ -35,6 +35,10 @@ export class FakeApify {
   /** Profile results by Instagram discovery query. */
   instagramSearches = new Map<string, Record<string, unknown>[]>();
   failNext?: { status: number; message: string };
+  /** Bytes served for each downloaded media file, by video id. Missing means no media link is returned. */
+  media = new Map<string, Buffer>();
+  /** Requests for media files, with whether they carried the Apify token. */
+  mediaRequests: { path: string; withToken: boolean }[] = [];
   private server = http.createServer((req, res) => this.handle(req, res));
 
   async start(port = 0): Promise<string> {
@@ -53,6 +57,16 @@ export class FakeApify {
     this.instagramSearches.clear();
     this.defaultTranscript = null;
     this.failNext = undefined;
+    this.media.clear();
+    this.mediaRequests = [];
+  }
+
+  private origin(): string {
+    return `http://127.0.0.1:${(this.server.address() as AddressInfo).port}`;
+  }
+  /** The same server under another host name, standing in for a CDN. */
+  private cdn(): string {
+    return `http://localhost:${(this.server.address() as AddressInfo).port}`;
   }
 
   private handle(req: http.IncomingMessage, res: http.ServerResponse): void {
@@ -65,6 +79,17 @@ export class FakeApify {
     req.on('data', (c) => (raw += c));
     req.on('end', () => {
       const key = (req.headers.authorization ?? '').replace(/^Bearer /, '') || undefined;
+
+      // Media files: TikTok downloads live in Apify storage (token required), Instagram files on a CDN.
+      const media = url.pathname.match(/^\/(?:v2\/key-value-stores\/videos\/records|cdn)\/([^/.]+)/);
+      if (media) {
+        this.mediaRequests.push({ path: url.pathname, withToken: key === APIFY_TOKEN });
+        const bytes = this.media.get(media[1]!);
+        if (!bytes || (url.pathname.startsWith('/v2/') && key !== APIFY_TOKEN)) return send(404, { error: { type: 'record-not-found' } });
+        res.writeHead(200, { 'content-type': 'audio/mp4', 'content-length': String(bytes.length) });
+        return void res.end(bytes);
+      }
+
       const input = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
       const actor = url.pathname.match(/^\/v2\/acts\/([^/]+)\/run-sync-get-dataset-items$/)?.[1] ?? '';
       this.calls.push({ actor, input, key, cap: url.searchParams.get('maxTotalChargeUsd') });
@@ -92,6 +117,7 @@ export class FakeApify {
         const post = this.posts.get(target);
         if (post) {
           const item = instagramItem(post, target);
+          if (this.media.has(post.id)) item.audioUrl = `${this.cdn()}/cdn/${post.id}.m4a`;
           if (input.includeTranscript === true) item.transcript = this.transcripts.has(target) ? this.transcripts.get(target) : this.defaultTranscript;
           return send(201, [item]);
         }
@@ -104,7 +130,9 @@ export class FakeApify {
         const videoUrl = String((input.postURLs as string[] | undefined)?.[0] ?? (input.directUrls as string[] | undefined)?.[0] ?? '');
         const post = this.posts.get(videoUrl);
         if (!post) return send(201, []);
-        return send(201, [post.platform === 'tiktok' ? tiktokItem(post, videoUrl) : instagramItem(post, videoUrl)]);
+        const item: Record<string, unknown> = post.platform === 'tiktok' ? tiktokItem(post, videoUrl) : instagramItem(post, videoUrl);
+        if (post.platform === 'tiktok') item.mediaUrls = input.shouldDownloadVideos === true && this.media.has(post.id) ? [`${this.origin()}/v2/key-value-stores/videos/records/${post.id}.mp4`] : [];
+        return send(201, [item]);
       }
 
       send(404, { error: { type: 'record-not-found', message: `Actor ${actor} was not found.` } });

@@ -119,7 +119,7 @@ export function Skeleton({ lines = 3 }: { lines?: number }) {
 const SECTION: Record<string, string> = {
   Videos: 'Research', Discover: 'Research', 'Hook library': 'Research', Watchlist: 'Setup',
   Hooks: 'Create', Scripts: 'Create', 'Analyze a link': 'Create', Library: 'Create',
-  Usage: 'Setup', Settings: 'Setup',
+  Usage: 'Setup', Settings: 'Setup', 'Analysis instructions': 'Setup',
 };
 
 export function PageHead({ title, eyebrow, action, children }: { title: string; eyebrow?: string; action?: ReactNode; children?: ReactNode }) {

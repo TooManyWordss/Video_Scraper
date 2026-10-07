@@ -12,9 +12,27 @@ type Usage = { prompt_tokens: number; completion_tokens: number; total_tokens: n
 export type Behavior =
   | { kind: 'json'; content: string; usage?: Usage | null }
   | { kind: 'stream'; pieces: string[]; usage?: Usage | null; errorAfter?: number; delayMs?: number }
-  | { kind: 'error'; status: number; body: unknown; headers?: Record<string, string> };
+  | { kind: 'error'; status: number; body: unknown; headers?: Record<string, string> }
+  /** An /audio/transcriptions answer in verbose_json shape. */
+  | { kind: 'transcription'; text: string; duration?: number; language?: string; segments?: { text: string; no_speech_prob?: number; avg_logprob?: number }[] };
 
+/** For audio uploads, body holds the multipart form fields and the uploaded file's size. */
 export type RecordedCall = { path: string; authorization: string | undefined; body: Record<string, any> };
+
+/** Reads the text fields of a multipart body, enough to check what the app sent. */
+function multipartFields(raw: Buffer, contentType: string): Record<string, any> {
+  const boundary = /boundary=(?:"([^"]+)"|([^;]+))/.exec(contentType);
+  const marker = `--${boundary?.[1] ?? boundary?.[2] ?? ''}`;
+  const fields: Record<string, any> = {};
+  for (const part of raw.toString('latin1').split(marker)) {
+    const name = /name="([^"]+)"/.exec(part)?.[1];
+    if (!name) continue;
+    const value = part.slice(part.indexOf('\r\n\r\n') + 4).replace(/\r\n$/, '');
+    if (/filename="/.test(part)) fields[`${name}Bytes`] = value.length;
+    else fields[name] = value;
+  }
+  return fields;
+}
 
 export const USAGE: Usage = { prompt_tokens: 120, completion_tokens: 80, total_tokens: 200 };
 
@@ -44,11 +62,18 @@ export class FakeGroq {
   private async handle(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     const chunks: Buffer[] = [];
     for await (const c of req) chunks.push(c as Buffer);
-    const body = JSON.parse(Buffer.concat(chunks).toString() || '{}');
+    const raw = Buffer.concat(chunks);
+    const contentType = req.headers['content-type'] ?? '';
+    const body = contentType.startsWith('multipart/form-data') ? multipartFields(raw, contentType) : JSON.parse(raw.toString() || '{}');
     this.calls.push({ path: req.url ?? '', authorization: req.headers.authorization, body });
 
     const next = this.queue.shift() ?? this.fallback?.(body);
-    if (req.url !== '/openai/v1/chat/completions' || !next) {
+    if (req.url === '/openai/v1/audio/transcriptions' && next?.kind === 'transcription') {
+      res.writeHead(200, { 'content-type': 'application/json', 'x-groq-id': 'req_test_audio' });
+      res.end(JSON.stringify({ task: 'transcribe', text: next.text, language: next.language ?? 'English', duration: next.duration ?? 30, segments: next.segments ?? [{ text: next.text, no_speech_prob: 0.01, avg_logprob: -0.2 }] }));
+      return;
+    }
+    if (req.url !== '/openai/v1/chat/completions' || !next || next.kind === 'transcription') {
       res.writeHead(500, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ error: { message: 'fake-groq: unexpected call', type: 'test' } }));
       return;

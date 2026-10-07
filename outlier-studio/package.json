@@ -27,6 +27,8 @@
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "server-only": "^0.0.1",
+    "unpdf": "^1.8.1",
+    "word-extractor": "^1.0.4",
     "zod": "^4.6.5"
   },
   "devDependencies": {

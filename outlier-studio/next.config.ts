@@ -1,8 +1,9 @@
 import type { NextConfig } from 'next';
 
 const config: NextConfig = {
-  // Database drivers load native/wasm assets at runtime and must not be bundled.
-  serverExternalPackages: ['@electric-sql/pglite', 'pg'],
+  // Database drivers load native/wasm assets at runtime and must not be bundled;
+  // the document parsers used by the instructions importer are kept out too.
+  serverExternalPackages: ['@electric-sql/pglite', 'pg', 'unpdf', 'word-extractor'],
   poweredByHeader: false,
   async headers() {
     return [

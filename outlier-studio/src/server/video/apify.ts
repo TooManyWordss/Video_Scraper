@@ -7,8 +7,8 @@ import { AppError } from '../errors';
 
 /**
  * Client for Apify (https://docs.apify.com), which runs the scrapers that read
- * public video pages: YouTube captions, and the numbers of one TikTok or
- * Instagram video. Each call runs one Actor and returns its dataset items.
+ * public video pages: YouTube captions, and the numbers and sound of one
+ * TikTok or Instagram video. Each call runs one Actor and returns its dataset items.
  * Apify bills each run against the account's monthly platform credit.
  *
  * The Actor ids and input fields below are the defaults this client was
@@ -58,14 +58,15 @@ export type Item = Record<string, unknown>;
  */
 const PRICE_PER_RESULT_USD: Record<ActorKind, number> = {
   youtubeTranscript: 2 / 1000,
-  tiktok: 1.7 / 1000,
-  // Free-plan price is the highest current tier, so the reservation is safe
-  // regardless of which Apify plan the server uses.
+  // Free-plan prices are the highest current tier, so the reservation is safe
+  // regardless of which Apify plan the server uses. Checked 2026-10-07.
+  tiktok: 3.7 / 1000,
   instagram: 2.6 / 1000,
   instagramSearch: 2.7 / 1000,
 };
 const ACTOR_START_USD = 0.001;
-const INSTAGRAM_TRANSCRIPT_USD = 48 / 1000;
+/** The TikTok Actor's video-download add-on, used to get audio for transcription. */
+const TIKTOK_VIDEO_DOWNLOAD_USD = 1.3 / 1000;
 // Apify rejects Reel Scraper runs below this value before the Actor starts,
 // even when a one-result price calculation would be lower.
 const INSTAGRAM_MIN_RUN_USD = 0.0073;
@@ -219,24 +220,44 @@ function transcriptText(item: Item): string {
 
 const none = () => new AppError(422, 'transcript_unavailable', 'This video has no transcript available. You can paste one in instead.');
 
-/**
- * The spoken words of a YouTube video or Instagram reel. Instagram uses the
- * transcript add-on of the same Actor that reads its public metrics.
- */
+/** The captions of a YouTube video. TikTok and Instagram are transcribed from their audio instead. */
 export async function fetchTranscript(videoUrl: string): Promise<Transcript> {
-  let item: Item | undefined;
-  if (YOUTUBE.test(videoUrl)) {
-    [item] = await runActor('youtubeTranscript', { videoUrls: [videoUrl], language: 'en', includeSegments: false }, 1);
-  } else if (INSTAGRAM.test(videoUrl)) {
-    [item] = await runActor('instagram', { username: [videoUrl], resultsLimit: 1, includeTranscript: true }, 1, INSTAGRAM_TRANSCRIPT_USD);
-  } else {
-    throw new AppError(422, 'transcript_unavailable', 'Automatic transcripts work for YouTube and Instagram videos. You can paste one in instead.');
-  }
+  if (!YOUTUBE.test(videoUrl)) throw new AppError(422, 'transcript_unavailable', 'Captions are only read from YouTube. You can paste a transcript in instead.');
+  const [item] = await runActor('youtubeTranscript', { videoUrls: [videoUrl], language: 'en', includeSegments: false }, 1);
   if (!item) throw none();
-  if (INSTAGRAM.test(videoUrl)) assertReadableInstagramItem(item);
   const text = transcriptText(item);
   if (!text) throw none();
   return { text, lang: str(item.language) || str(item.lang) || null };
+}
+
+/** Where to download a video's sound from. headers carries the Apify token for files kept in Apify storage. */
+export type MediaSource = { url: string; headers: Record<string, string> };
+
+const noMedia = () => new AppError(422, 'audio_unavailable', "The video's audio could not be fetched. You can paste a transcript in instead.");
+
+/**
+ * A downloadable copy of a TikTok or Instagram video's sound, for speech-to-text.
+ * Instagram's normal result already links the media. TikTok needs the Actor's
+ * video-download add-on, which saves the file to Apify storage.
+ */
+export async function fetchMediaSource(videoUrl: string): Promise<MediaSource> {
+  let url: string | null = null;
+  if (TIKTOK.test(videoUrl)) {
+    const [item] = await runActor('tiktok', { postURLs: [videoUrl], resultsPerPage: 1, shouldDownloadVideos: true }, 1, TIKTOK_VIDEO_DOWNLOAD_USD);
+    url = Array.isArray(item?.mediaUrls) ? httpUrl(item.mediaUrls[0]) : null;
+  } else if (INSTAGRAM.test(videoUrl)) {
+    const [item] = await runActor('instagram', { username: [videoUrl], resultsLimit: 1 }, 1);
+    if (item) assertReadableInstagramItem(item);
+    // The audio-only file is far smaller; the video file has the same sound.
+    url = httpUrl(item?.audioUrl) ?? httpUrl(item?.videoUrl);
+  } else {
+    throw new AppError(422, 'transcript_unavailable', 'Audio transcripts work for TikTok and Instagram videos. You can paste one in instead.');
+  }
+  if (!url) throw noMedia();
+  // The token is only ever sent back to Apify itself, never to a CDN.
+  const apifyOrigin = new URL(baseUrl()).origin;
+  const headers: Record<string, string> = new URL(url).origin === apifyOrigin ? { authorization: `Bearer ${env().APIFY_TOKEN}` } : {};
+  return { url, headers };
 }
 
 export type VideoMetadata = {

@@ -9,7 +9,10 @@ const schema = z.object({
   GROQ_API_KEY: z.string().optional(),
   GROQ_MODEL_QUALITY: z.string().min(1).default('openai/gpt-oss-120b'),
   GROQ_MODEL_FAST: z.string().min(1).default('openai/gpt-oss-20b'),
-  GROQ_MODEL_TRANSCRIBE: z.string().min(1).default('whisper-large-v3-turbo'),
+  /** Speech-to-text for TikTok and Instagram audio. whisper-large-v3 is Groq's most accurate model. */
+  GROQ_MODEL_TRANSCRIBE: z.string().min(1).default('whisper-large-v3'),
+  /** Largest audio file sent for transcription. Groq's free tier accepts 25 MB; the dev tier 100 MB. */
+  GROQ_AUDIO_MAX_MB: z.coerce.number().min(1).max(100).default(25),
   GROQ_STRICT_JSON_MODELS: z.string().default('openai/gpt-oss-120b,openai/gpt-oss-20b,qwen/qwen3.8-27b'),
   GROQ_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300_000).default(60_000),
   GROQ_MAX_RETRIES: z.coerce.number().int().min(0).max(5).default(2),
@@ -18,7 +21,7 @@ const schema = z.object({
   GROQ_REASONING_EFFORT: z.enum(['low', 'medium', 'high']).optional(),
   /** Google API key with the YouTube Data API v3 enabled. Needed for competitor tracking. */
   YOUTUBE_API_KEY: z.string().optional(),
-  /** Apify API token: YouTube transcripts, and numbers for TikTok and Instagram videos. */
+  /** Apify API token: YouTube transcripts, and numbers and audio for TikTok and Instagram videos. */
   APIFY_TOKEN: z.string().optional(),
   /** Most this server may spend on Apify in a calendar month (UTC). Capped at $5 in code. */
   APIFY_MONTHLY_BUDGET_USD: z.coerce.number().min(0).default(5),

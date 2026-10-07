@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Picture } from '@/components/Picture';
+import { PlatformBadge } from '@/components/PlatformBadge';
 import { ErrorNotice, Field, PageHead, Skeleton } from '@/components/ui';
 import { api, type ApiError } from '@/lib/api';
 import { ago, compact, day, num, signed } from '@/lib/format';
@@ -54,13 +55,16 @@ function ChannelRow({ channel, onChanged }: { channel: TrackedChannel; onChanged
         <Picture className="avatar" src={channel.thumbnailUrl} name={channel.title} />
       </span>
       <div className="channel-name">
-        <a href={authorUrl(channel)} target="_blank" rel="noreferrer">
-          {channel.title}
-        </a>
+        <span className="channel-title-row">
+          <a href={authorUrl(channel)} target="_blank" rel="noreferrer">
+            {channel.title}
+          </a>
+          <PlatformBadge platform={channel.platform} />
+        </span>
         <span className="muted small channel-status">
           <i data-live={busy === 'check'} />
           {channel.handle ?? PLATFORM_NAME[channel.platform]}
-          {channel.monitored ? `, checked ${channel.lastCheckedAt ? ago(channel.lastCheckedAt) : 'never'}` : `, ${PLATFORM_NAME[channel.platform]}, videos added by link`}
+          {channel.monitored ? `, checked ${channel.lastCheckedAt ? ago(channel.lastCheckedAt) : 'never'}` : ', videos added by link'}
         </span>
       </div>
       {channel.monitored ? (

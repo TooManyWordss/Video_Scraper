@@ -11,18 +11,33 @@ export type Analysis = {
   hook: { text: string; pattern: string; whyItWorks: string };
   format: string;
   structure: { section: string; purpose: string; summary: string }[];
-  storytellingTactics: string[];
+  /** New analyses list techniques; older ones have storytellingTactics instead. */
+  techniques?: Technique[];
+  storytellingTactics?: string[];
   topics: string[];
   takeaways: string[];
   remixIdeas: { title: string; angle: string }[];
+  /** Answers to what the user's analysis instructions asked for. */
+  customFocus?: { point: string; detail: string }[];
+  /** Name of the instructions set the analysis followed, if any. */
+  instructionsName?: string | null;
+  /** Added when the user asks for the sentence-by-sentence breakdown. */
+  longBreakdown?: LongBreakdown;
   outlierMultiple: number | null;
 };
+
+export type Technique = { name: string; kind: 'tactic' | 'trick' | 'technique'; quote: string; effect: string };
+export type BreakdownLine = { text: string; role: string; technique: string; explanation: string };
+export type LongBreakdown = { lines: BreakdownLine[]; createdAt: string; truncated: boolean };
+
+export type AnalysisInstructions = { id: string; name: string; content: string; isDefault: boolean; createdAt: string; updatedAt: string };
+export type ChatMessage = { id: string; role: 'user' | 'assistant'; content: string; createdAt: string };
 
 type Base = { id: string; title: string; createdAt: string };
 export type Generation =
   | (Base & { kind: 'hooks'; input: { topic: string }; output: { hooks: Hook[] } })
   | (Base & { kind: 'script'; input: { idea: string }; output: { text: string } })
-  | (Base & { kind: 'analysis'; input: { transcript: string; title?: string; views?: number; channelMedianViews?: number }; output: Analysis })
+  | (Base & { kind: 'analysis'; input: { transcript: string; title?: string; views?: number; channelMedianViews?: number; instructions?: { id: string; name: string } | null }; output: Analysis })
   | (Base & { kind: 'report'; input: { channelId: string; channelTitle: string }; output: Report });
 
 export type Report = {
@@ -45,7 +60,7 @@ export type HookLibraryItem = {
   video: { id: string; title: string; viewCount: number | null; outlierMultiple: number | null; channelTitle: string; platform: VideoPlatform } | null;
 };
 
-export type GenerationSummary = { id: string; kind: Generation['kind']; title: string; createdAt: string };
+export type GenerationSummary = { id: string; kind: Generation['kind']; title: string; createdAt: string; platform: VideoPlatform | null };
 
 type Totals = {
   requests: number; failed: number; credits: number;
